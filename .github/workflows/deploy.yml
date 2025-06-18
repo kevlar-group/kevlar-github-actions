@@ -12,22 +12,15 @@ on:
         type: string
         default: '/opt/app'
     secrets:    
-      server-host:
-        description: 'Server hostname or IP'
-        required: true
       ssh-private-key:
         description: 'SSH private key for server access'
         required: true
-      dockerhub-username:
-        description: 'Docker Hub username'
-        required: true
-      dockerhub-token:
-        description: 'Docker Hub token'
+      server-host:
+        description: 'Server hostname or IP'
         required: true
       server-user:
         description: 'Server username'
         required: true
-    
 
 jobs:
   deploy:
@@ -41,8 +34,10 @@ jobs:
     - name: Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        echo "${{ secrets.ssh-private-key }}" | tr -d '\r' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        eval "$(ssh-agent -s)"
+        ssh-add ~/.ssh/id_rsa
         ssh-keyscan github.com >> ~/.ssh/known_hosts
 
     - name: Add server to known hosts
@@ -51,18 +46,18 @@ jobs:
 
     - name: Create deployment directory on server
       run: |
-        ssh ${{ secrets.server-user }}@${{ secrets.server-host }} "mkdir -p ${{ inputs.deployment-path }}"
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} "mkdir -p ${{ inputs.deployment-path }}"
 
     - name: Copy deployment files to server
       run: |
-        scp docker-compose.yml ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp init-db.sql ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp env.example ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        scp -o StrictHostKeyChecking=no docker-compose.yml ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        scp -o StrictHostKeyChecking=no init-db.sql ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        scp -o StrictHostKeyChecking=no env.example ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        scp -o StrictHostKeyChecking=no .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
 
     - name: Deploy to server
       run: |
-        ssh ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
           cd ${{ inputs.deployment-path }}
           
           # Check if docker-compose command exists, use docker compose if not
@@ -90,7 +85,7 @@ jobs:
 
     - name: Verify deployment
       run: |
-        ssh ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
           # Wait for application to start
           sleep 30
           
@@ -116,4 +111,4 @@ jobs:
             $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml logs
             exit 1
           fi
-        EOF 
+        EOF

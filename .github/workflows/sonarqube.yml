@@ -7,9 +7,20 @@ on:
         required: false
         type: string
         default: '17'
+      sonar-project-key:
+        description: 'SonarQube project key'
+        required: false
+        type: string
+      sonar-project-name:
+        description: 'SonarQube project name'
+        required: true
+        type: string
     secrets:
       sonar-token:
         description: 'SonarQube token'
+        required: true
+      sonar-host-url:
+        description: 'SonarQube host URL'
         required: true
 
 jobs:
@@ -32,3 +43,21 @@ jobs:
       run: mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
       env:
         SONAR_TOKEN: ${{ secrets.sonar-token }} 
+
+    - name: Cache SonarQube packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
+    - name: Cache Maven packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    - name: Build and analyze
+      env:
+        SONAR_TOKEN: ${{ secrets.sonar-token }}
+        SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
+      run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=${{ inputs.sonar-project-key }} -Dsonar.projectName=${{ inputs.sonar-project-name }}

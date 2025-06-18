@@ -59,8 +59,8 @@ jobs:
     uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
     with:
       java-version: '17'
-      sonar-token: ${{ secrets.SONAR_TOKEN }}
-    secrets: inherit
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # Security scan (this part remains custom as it's not in your reusable workflows)
   security-scan:

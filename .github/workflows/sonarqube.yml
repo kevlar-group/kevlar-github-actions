@@ -81,6 +81,8 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.sonar-token }}
         SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
 
     # Optional: Quality Gate check (uncomment if you want to fail on quality gate issues)
     # - name: SonarQube Quality Gate

@@ -38,13 +38,13 @@ jobs:
     - name: Docker Login
       uses: ./.github/workflows/steps/docker-login.yml
       with:
-        username: ${{ inputs.dockerhub-username }}
-        password: ${{ inputs.dockerhub-token }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Build and Push Docker Image
       uses: ./.github/workflows/steps/build-push-docker.yml
       with:
         registry: ${{ inputs.registry }}
         image-name: ${{ inputs.image-name }}
-        username: ${{ inputs.dockerhub-username }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
         dockerfile: ${{ inputs.dockerfile }} 

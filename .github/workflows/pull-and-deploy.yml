@@ -1,0 +1,52 @@
+name: Pull and Deploy Job
+on:
+  workflow_call:
+    inputs:
+      server-host:
+        description: 'Server hostname or IP'
+        required: true
+        type: string
+      server-user:
+        description: 'Server username'
+        required: true
+        type: string
+      dockerhub-username:
+        description: 'Docker Hub username'
+        required: true
+        type: string
+      image-name:
+        description: 'Docker image name'
+        required: true
+        type: string
+      deployment-path:
+        description: 'Deployment path on server'
+        required: false
+        type: string
+        default: '/opt/app'
+      ssh-private-key:
+        description: 'SSH private key for server access'
+        required: true
+        type: string
+
+jobs:
+  pull-and-deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH
+      uses: ./.github/workflows/steps/setup-ssh.yml
+      with:
+        ssh-private-key: ${{ inputs.ssh-private-key }}
+
+    - name: Deploy to Server
+      uses: ./.github/workflows/steps/deploy-to-server.yml
+      with:
+        server-host: ${{ inputs.server-host }}
+        server-user: ${{ inputs.server-user }}
+        dockerhub-username: ${{ inputs.dockerhub-username }}
+        image-name: ${{ inputs.image-name }}
+        deployment-path: ${{ inputs.deployment-path }} 

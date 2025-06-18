@@ -1,5 +1,4 @@
 name: Deploy Job
-description: Deploy application to server
 on:
   workflow_call:
     inputs:

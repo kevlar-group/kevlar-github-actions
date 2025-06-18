@@ -1,5 +1,4 @@
 name: Build and Push Job
-description: Build and push Docker image to registry
 on:
   workflow_call:
     inputs:

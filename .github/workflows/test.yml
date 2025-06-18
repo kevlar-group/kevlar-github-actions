@@ -1,5 +1,4 @@
 name: Test Job
-description: Run tests with PostgreSQL database
 on:
   workflow_call:
     inputs:

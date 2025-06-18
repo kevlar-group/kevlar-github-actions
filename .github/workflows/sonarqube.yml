@@ -1,5 +1,4 @@
 name: SonarQube Job
-description: Run SonarQube analysis on Java code
 on:
   workflow_call:
     inputs:

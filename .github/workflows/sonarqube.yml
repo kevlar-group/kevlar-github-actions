@@ -9,7 +9,7 @@ on:
         default: '17'
       sonar-project-key:
         description: 'SonarQube project key'
-        required: false
+        required: true
         type: string
       sonar-project-name:
         description: 'SonarQube project name'
@@ -38,12 +38,6 @@ jobs:
         java-version: ${{ inputs.java-version }}
         distribution: 'temurin'
         cache: maven
-
-    - name: SonarQube Analysis
-      run: mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
-      env:
-        SONAR_TOKEN: ${{ secrets.sonar-token }} 
-
     - name: Cache SonarQube packages
       uses: actions/cache@v4
       with:

@@ -35,10 +35,10 @@ jobs:
     with:
       registry: 'docker.io'
       image-name: 'kevlar-gas-station-mis'
+      dockerfile: './Dockerfile'
+    secrets:
       dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
       dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
-      dockerfile: './Dockerfile'
-    secrets: inherit
 
   # Deploy job using reusable workflow
   deploy:
@@ -59,8 +59,11 @@ jobs:
     uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
     with:
       java-version: '17'
+      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      sonar-project-name: ${{ vars.SONAR_PROJECT_NAME }}
     secrets:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+      sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
 
   # Security scan (this part remains custom as it's not in your reusable workflows)
   security-scan:

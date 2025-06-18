@@ -66,6 +66,20 @@ jobs:
       if: inputs.project-type == 'nestjs'
       run: npm ci
 
+    - name: Create sonar-project.properties (TypeScript/JavaScript)
+      if: inputs.project-type != 'java'
+      run: |
+        cat > sonar-project.properties << EOF
+        sonar.projectKey=${{ inputs.sonar-project-key }}
+        sonar.projectName=${{ inputs.sonar-project-name }}
+        sonar.projectVersion=1.0
+        sonar.sources=src
+        sonar.tests=src
+        sonar.javascript.lcov.reportPaths=coverage/lcov.info
+        sonar.testExecutionReportPaths=coverage/test-reporter.xml
+        sonar.coverage.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts,**/__tests__/**,**/test/**,**/tests/**
+        EOF
+
     - name: SonarQube Analysis (Java)
       if: inputs.project-type == 'java'
       run: mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar
@@ -81,8 +95,6 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.sonar-token }}
         SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
-        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
-        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
 
     # Optional: Quality Gate check (uncomment if you want to fail on quality gate issues)
     # - name: SonarQube Quality Gate

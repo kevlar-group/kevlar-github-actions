@@ -1,0 +1,90 @@
+name: Build and Deploy to DockerHub
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+# Add permissions for security scanning
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: kevlar-gas-station-mis
+
+jobs:
+  # Test job using reusable workflow
+  test:
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/test.yml@main
+    with:
+      java-version: '17'
+      postgres-db: 'kevlar_gas_station_db'
+      postgres-user: 'postgres'
+      postgres-password: 'password'
+    secrets: inherit
+
+  # Build and push job using reusable workflow
+  build-and-push:
+    needs: test
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/build-and-push.yml@main
+    with:
+      registry: 'docker.io'
+      image-name: 'kevlar-gas-station-mis'
+      dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+      dockerfile: './Dockerfile'
+    secrets: inherit
+
+  # Deploy job using reusable workflow
+  deploy:
+    needs: build-and-push
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/deploy.yml@main
+    with:
+      server-host: ${{ secrets.SERVER_HOST }}
+      server-user: ${{ secrets.SERVER_USER }}
+      dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      image-name: 'kevlar-gas-station-mis'
+      deployment-path: '/opt/kevlar-gas-station'
+      ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    secrets: inherit
+
+  # SonarQube analysis using reusable workflow
+  sonarqube:
+    needs: test
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
+    with:
+      java-version: '17'
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+    secrets: inherit
+
+  # Security scan (this part remains custom as it's not in your reusable workflows)
+  security-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    # Add specific permissions for this job
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true  # Don't fail the workflow if upload fails
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif' 

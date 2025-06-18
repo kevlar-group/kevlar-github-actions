@@ -11,19 +11,17 @@ on:
         description: 'Docker image name'
         required: true
         type: string
-      dockerhub-username:
-        description: 'Docker Hub username'
-        required: true
-        type: string
-      dockerhub-token:
-        description: 'Docker Hub token'
-        required: true
-        type: string
       dockerfile:
         description: 'Path to Dockerfile'
         required: false
         type: string
         default: './Dockerfile'
+    secrets:
+      dockerhub-username:
+        required: true
+      dockerhub-token: 
+        required: true
+        
 
 jobs:
   build-and-push:

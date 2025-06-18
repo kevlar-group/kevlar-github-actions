@@ -21,8 +21,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: SonarQube Analysis
-      uses: ./.github/workflows/steps/sonarqube-scan.yml
+    - name: Set up JDK
+      uses: actions/setup-java@v4
       with:
-        sonar-token: ${{ secrets.SONAR_TOKEN }}
-        java-version: ${{ inputs.java-version }} 
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: maven
+
+    - name: SonarQube Analysis
+      run: mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} 

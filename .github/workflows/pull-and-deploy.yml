@@ -2,18 +2,6 @@ name: Pull and Deploy Job
 on:
   workflow_call:
     inputs:
-      server-host:
-        description: 'Server hostname or IP'
-        required: true
-        type: string
-      server-user:
-        description: 'Server username'
-        required: true
-        type: string
-      dockerhub-username:
-        description: 'Docker Hub username'
-        required: true
-        type: string
       image-name:
         description: 'Docker image name'
         required: true
@@ -23,30 +11,83 @@ on:
         required: false
         type: string
         default: '/opt/app'
+    secrets:
+      server-host:
+        description: 'Server hostname or IP'
+        required: true
+      server-user:
+        description: 'Server username'
+        required: true
       ssh-private-key:
         description: 'SSH private key for server access'
         required: true
-        type: string
 
 jobs:
   pull-and-deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Setup SSH
-      uses: ./.github/workflows/steps/setup-ssh.yml
-      with:
-        ssh-private-key: ${{ inputs.ssh-private-key }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-    - name: Deploy to Server
-      uses: ./.github/workflows/steps/deploy-to-server.yml
-      with:
-        server-host: ${{ inputs.server-host }}
-        server-user: ${{ inputs.server-user }}
-        dockerhub-username: ${{ inputs.dockerhub-username }}
-        image-name: ${{ inputs.image-name }}
-        deployment-path: ${{ inputs.deployment-path }} 
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Pull and deploy to server
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          cd ${{ inputs.deployment-path }}
+          
+          # Check if docker-compose command exists, use docker compose if not
+          if command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+          else
+            COMPOSE_CMD="docker compose"
+          fi
+          
+          # Pull the latest image
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.image-name }}:latest
+          
+          # Stop existing containers
+          $COMPOSE_CMD -f docker-compose.yml down
+          
+          # Start the application
+          $COMPOSE_CMD -f docker-compose.yml up -d
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Show running containers
+          $COMPOSE_CMD -f docker-compose.yml ps
+        EOF
+
+    - name: Verify deployment
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          # Wait for application to start
+          sleep 30
+          
+          # Check if docker-compose command exists, use docker compose if not
+          if command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+          else
+            COMPOSE_CMD="docker compose"
+          fi
+          
+          # Check if containers are running
+          if $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml ps | grep -q "Up"; then
+            echo "✅ Deployment successful! Containers are running."
+          else
+            echo "❌ Deployment failed! Containers are not running."
+            $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml logs
+            exit 1
+          fi
+        EOF 

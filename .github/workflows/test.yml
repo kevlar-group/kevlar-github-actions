@@ -45,14 +45,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Java
-      uses: ./.github/workflows/steps/setup-java.yml
+    - name: Set up JDK
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: maven
 
-    - name: Run Tests
-      uses: ./.github/workflows/steps/run-tests.yml
-      with:
-        datasource-url: jdbc:postgresql://localhost:5432/${{ inputs.postgres-db }}
-        datasource-username: ${{ inputs.postgres-user }}
-        datasource-password: ${{ inputs.postgres-password }} 
+    - name: Run tests
+      run: mvn clean test
+      env:
+        SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ inputs.postgres-db }}
+        SPRING_DATASOURCE_USERNAME: ${{ inputs.postgres-user }}
+        SPRING_DATASOURCE_PASSWORD: ${{ inputs.postgres-password }} 

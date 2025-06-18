@@ -2,6 +2,10 @@ name: Deploy Job
 on:
   workflow_call:
     inputs:
+      server-user:
+        description: 'Server username'
+        required: true
+        type: string
       image-name:
         description: 'Docker image name'
         required: true
@@ -11,19 +15,20 @@ on:
         required: false
         type: string
         default: '/opt/app'
-    secrets:
+    secrets:    
       server-host:
         description: 'Server hostname or IP'
-        required: true
-      server-user:
-        description: 'Server username'
-        required: true
-      dockerhub-username:
-        description: 'Docker Hub username'
         required: true
       ssh-private-key:
         description: 'SSH private key for server access'
         required: true
+      dockerhub-username:
+        description: 'Docker Hub username'
+        required: true
+      dockerhub-token:
+        description: 'Docker Hub token'
+        required: true
+    
 
 jobs:
   deploy:
@@ -35,15 +40,81 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup SSH
-      uses: ./.github/workflows/steps/setup-ssh.yml
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-    - name: Deploy to Server
-      uses: ./.github/workflows/steps/deploy-to-server.yml
-      with:
-        server-host: ${{ secrets.SERVER_HOST }}
-        server-user: ${{ secrets.SERVER_USER }}
-        dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-        image-name: ${{ inputs.image-name }}
-        deployment-path: ${{ inputs.deployment-path }} 
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Create deployment directory on server
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ inputs.deployment-path }}"
+
+    - name: Copy deployment files to server
+      run: |
+        scp docker-compose.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ inputs.deployment-path }}/
+        scp init-db.sql ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ inputs.deployment-path }}/
+        scp env.example ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ inputs.deployment-path }}/
+        scp .env ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ inputs.deployment-path }}/
+
+    - name: Deploy to server
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          cd ${{ inputs.deployment-path }}
+          
+          # Check if docker-compose command exists, use docker compose if not
+          if command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+          else
+            COMPOSE_CMD="docker compose"
+          fi
+          
+          # Pull the latest image
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.image-name }}:latest
+          
+          # Stop existing containers
+          $COMPOSE_CMD -f docker-compose.yml down
+          
+          # Start the application (docker-compose will automatically use .env file)
+          $COMPOSE_CMD -f docker-compose.yml up -d
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Show running containers
+          $COMPOSE_CMD -f docker-compose.yml ps
+        EOF
+
+    - name: Verify deployment
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          # Wait for application to start
+          sleep 30
+          
+          # Check if docker-compose command exists, use docker compose if not
+          if command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+          else
+            COMPOSE_CMD="docker compose"
+          fi
+          
+          # Check if containers are running
+          if $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml ps | grep -q "Up"; then
+            echo "✅ Deployment successful! Containers are running."
+            
+            # Test application health
+            if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+              echo "✅ Application health check passed!"
+            else
+              echo "⚠️ Application health check failed, but containers are running."
+            fi
+          else
+            echo "❌ Deployment failed! Containers are not running."
+            $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml logs
+            exit 1
+          fi
+        EOF 

@@ -69,19 +69,28 @@ jobs:
     - name: Create sonar-project.properties (TypeScript/JavaScript)
       if: inputs.project-type != 'java'
       run: |
+        # Start with basic configuration
         cat > sonar-project.properties << EOF
         sonar.projectKey=${{ inputs.sonar-project-key }}
         sonar.projectName=${{ inputs.sonar-project-name }}
         sonar.projectVersion=1.0
         sonar.sources=src
         sonar.tests=src
-        sonar.javascript.lcov.reportPaths=coverage/lcov.info
-        sonar.testExecutionReportPaths=coverage/test-reporter.xml
         sonar.coverage.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts,**/__tests__/**,**/test/**,**/tests/**
         sonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts,**/__tests__/**
         sonar.test.exclusions=**/*.js,**/*.ts,**/*.jsx,**/*.tsx
         sonar.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts,**/__tests__/**
         EOF
+        
+        # Add coverage report if it exists
+        if [ -f "coverage/lcov.info" ]; then
+          echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+        fi
+        
+        # Add test execution report if it exists
+        if [ -f "coverage/test-reporter.xml" ]; then
+          echo "sonar.testExecutionReportPaths=coverage/test-reporter.xml" >> sonar-project.properties
+        fi
 
     - name: SonarQube Analysis (Java)
       if: inputs.project-type == 'java'

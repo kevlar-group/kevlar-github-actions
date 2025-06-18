@@ -1,0 +1,106 @@
+name: Vercel Deploy Job
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Project type (react, nextjs, nestjs)'
+        required: true
+        type: string
+        default: 'nextjs'
+      vercel-project-id:
+        description: 'Vercel project ID'
+        required: true
+        type: string
+      vercel-org-id:
+        description: 'Vercel organization ID'
+        required: true
+        type: string
+      vercel-project-name:
+        description: 'Vercel project name'
+        required: true
+        type: string
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      build-command:
+        description: 'Build command to run'
+        required: false
+        type: string
+        default: 'npm run build'
+      api-url:
+        description: 'API URL for environment variable'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      vercel-token:
+        description: 'Vercel authentication token'
+        required: true
+
+jobs:
+  vercel-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: ${{ inputs.build-command }}
+      env:
+        NEXT_PUBLIC_API_URL: ${{ inputs.api-url }}
+
+    - name: Install Vercel CLI
+      run: npm install --global vercel@latest
+
+    - name: Pull Vercel Environment Information
+      run: vercel pull --yes --environment=production --token=${{ secrets.vercel-token }}
+
+    - name: Build Project Artifacts
+      run: vercel build --prod --token=${{ secrets.vercel-token }}
+
+    - name: Deploy Project Artifacts to Vercel (Production)
+      run: vercel deploy --prebuilt --prod --token=${{ secrets.vercel-token }}
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    - name: Deploy Preview to Vercel (Preview)
+      run: vercel deploy --prebuilt --token=${{ secrets.vercel-token }}
+      if: github.event_name == 'pull_request'
+
+    - name: Get deployment URL
+      id: deployment
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          DEPLOYMENT_URL=$(vercel ls --token ${{ secrets.vercel-token }} | grep ${{ inputs.vercel-project-name }} | head -1 | awk '{print $2}')
+        else
+          DEPLOYMENT_URL=$(vercel ls --token ${{ secrets.vercel-token }} | grep ${{ inputs.vercel-project-name }} | head -1 | awk '{print $2}')
+        fi
+        echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+        echo "✅ Deployed to: $DEPLOYMENT_URL"
+
+    - name: Comment deployment URL
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🚀 **Vercel Preview Deployment Complete!**
+          
+          **Preview URL:** ${{ steps.deployment.outputs.deployment_url }}
+          
+          This deployment was triggered by commit: \`${{ github.sha }}\``
+          }) 

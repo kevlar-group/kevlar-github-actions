@@ -71,12 +71,27 @@ jobs:
       vercel-token: ${{ secrets.VERCEL_TOKEN }}
 
   # SonarQube analysis using reusable workflow
-  sonarqube:
+  # For Java projects
+  sonarqube-java:
     needs: test
+    if: vars.PROJECT_TYPE == 'java'
     uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
     with:
+      project-type: 'java'
       java-version: '17'
-      project-type: 'java'  # Options: java, react, nextjs, nestjs
+      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      sonar-project-name: ${{ vars.SONAR_PROJECT_NAME }}
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+      sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
+
+  # SonarQube analysis for TypeScript/JavaScript projects
+  sonarqube-js:
+    needs: test
+    if: vars.PROJECT_TYPE != 'java'
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
+    with:
+      project-type: 'nextjs'  # Options: react, nextjs, nestjs
       sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
       sonar-project-name: ${{ vars.SONAR_PROJECT_NAME }}
     secrets:

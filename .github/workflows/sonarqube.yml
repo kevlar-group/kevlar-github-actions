@@ -36,6 +36,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
     - name: Set up JDK (for Java projects)
       if: inputs.project-type == 'java'
@@ -73,44 +75,17 @@ jobs:
         SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
         SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
 
-    - name: SonarQube Analysis (React.js)
-      if: inputs.project-type == 'react'
-      run: |
-        npm install -g sonarqube-scanner
-        sonar-scanner \
-          -Dsonar.projectKey=${{ inputs.sonar-project-key }} \
-          -Dsonar.projectName="${{ inputs.sonar-project-name }}" \
-          -Dsonar.sources=src \
-          -Dsonar.host.url=${{ secrets.sonar-host-url }} \
-          -Dsonar.login=${{ secrets.sonar-token }}
+    - name: SonarQube Analysis (TypeScript/JavaScript)
+      if: inputs.project-type != 'java'
+      uses: SonarSource/sonarqube-scan-action@v5
       env:
         SONAR_TOKEN: ${{ secrets.sonar-token }}
         SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
 
-    - name: SonarQube Analysis (Next.js)
-      if: inputs.project-type == 'nextjs'
-      run: |
-        npm install -g sonarqube-scanner
-        sonar-scanner \
-          -Dsonar.projectKey=${{ inputs.sonar-project-key }} \
-          -Dsonar.projectName="${{ inputs.sonar-project-name }}" \
-          -Dsonar.sources=src,components,pages \
-          -Dsonar.host.url=${{ secrets.sonar-host-url }} \
-          -Dsonar.login=${{ secrets.sonar-token }}
-      env:
-        SONAR_TOKEN: ${{ secrets.sonar-token }}
-        SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
-
-    - name: SonarQube Analysis (NestJS)
-      if: inputs.project-type == 'nestjs'
-      run: |
-        npm install -g sonarqube-scanner
-        sonar-scanner \
-          -Dsonar.projectKey=${{ inputs.sonar-project-key }} \
-          -Dsonar.projectName="${{ inputs.sonar-project-name }}" \
-          -Dsonar.sources=src \
-          -Dsonar.host.url=${{ secrets.sonar-host-url }} \
-          -Dsonar.login=${{ secrets.sonar-token }}
-      env:
-        SONAR_TOKEN: ${{ secrets.sonar-token }}
-        SONAR_HOST_URL: ${{ secrets.sonar-host-url }}
+    # Optional: Quality Gate check (uncomment if you want to fail on quality gate issues)
+    # - name: SonarQube Quality Gate
+    #   if: inputs.project-type != 'java'
+    #   uses: SonarSource/sonarqube-quality-gate-action@v1
+    #   timeout-minutes: 5
+    #   env:
+    #     SONAR_TOKEN: ${{ secrets.sonar-token }}

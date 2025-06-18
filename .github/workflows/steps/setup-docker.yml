@@ -1,0 +1,7 @@
+name: Setup Docker
+description: Setup Docker Buildx for building and pushing images
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3 

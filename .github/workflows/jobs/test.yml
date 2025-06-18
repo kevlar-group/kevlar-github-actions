@@ -1,0 +1,59 @@
+name: Test Job
+description: Run tests with PostgreSQL database
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      postgres-db:
+        description: 'PostgreSQL database name'
+        required: true
+        type: string
+      postgres-user:
+        description: 'PostgreSQL username'
+        required: false
+        type: string
+        default: 'postgres'
+      postgres-password:
+        description: 'PostgreSQL password'
+        required: false
+        type: string
+        default: 'password'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: ./.github/workflows/steps/setup-java.yml
+      with:
+        java-version: ${{ inputs.java-version }}
+
+    - name: Run Tests
+      uses: ./.github/workflows/steps/run-tests.yml
+      with:
+        datasource-url: jdbc:postgresql://localhost:5432/${{ inputs.postgres-db }}
+        datasource-username: ${{ inputs.postgres-user }}
+        datasource-password: ${{ inputs.postgres-password }} 

@@ -1,0 +1,26 @@
+name: Run Tests
+description: Run Maven tests with PostgreSQL connection
+inputs:
+  datasource-url:
+    description: 'Database connection URL'
+    required: true
+    default: 'jdbc:postgresql://localhost:5432/test_db'
+  datasource-username:
+    description: 'Database username'
+    required: true
+    default: 'postgres'
+  datasource-password:
+    description: 'Database password'
+    required: true
+    default: 'password'
+
+runs:
+  using: composite
+  steps:
+    - name: Run tests
+      run: mvn clean test
+      shell: bash
+      env:
+        SPRING_DATASOURCE_URL: ${{ inputs.datasource-url }}
+        SPRING_DATASOURCE_USERNAME: ${{ inputs.datasource-username }}
+        SPRING_DATASOURCE_PASSWORD: ${{ inputs.datasource-password }} 

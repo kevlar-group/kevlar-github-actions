@@ -1,0 +1,33 @@
+# SonarQube Project Configuration
+# Copy this file to sonar-project.properties and update with your values
+
+# Project identification
+sonar.projectKey=your-project-key
+sonar.organization=your-organization
+
+# SonarCloud configuration
+sonar.host.url=https://sonarcloud.io
+
+# Source code configuration
+sonar.sources=src/main/java
+sonar.tests=src/test/java
+
+# Compiled code configuration
+sonar.java.binaries=target/classes
+sonar.java.test.binaries=target/test-classes
+
+# Coverage and test reports
+sonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+sonar.junit.reportPaths=target/surefire-reports
+
+# Encoding
+sonar.sourceEncoding=UTF-8
+
+# Exclude patterns
+sonar.exclusions=**/generated/**,**/target/**,**/test/**
+
+# Test exclusions
+sonar.test.exclusions=**/test/**,**/tests/**
+
+# Additional properties
+sonar.java.source=17 

@@ -1,0 +1,29 @@
+name: SonarQube Job
+description: Run SonarQube analysis on Java code
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      sonar-token:
+        description: 'SonarQube token'
+        required: true
+        type: string
+
+jobs:
+  sonarqube:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: SonarQube Analysis
+      uses: ./.github/workflows/steps/sonarqube-scan.yml
+      with:
+        sonar-token: ${{ inputs.sonar-token }}
+        java-version: ${{ inputs.java-version }} 

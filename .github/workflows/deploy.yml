@@ -21,7 +21,10 @@ on:
       server-user:
         description: 'Server username'
         required: true
-
+      dockerhub-username:
+        description: 'Docker Hub username'
+        required: true
+        
 jobs:
   deploy:
     runs-on: ubuntu-latest

@@ -2,10 +2,6 @@ name: Deploy Job
 on:
   workflow_call:
     inputs:
-      server-user:
-        description: 'Server username'
-        required: true
-        type: string
       image-name:
         description: 'Docker image name'
         required: true
@@ -27,6 +23,9 @@ on:
         required: true
       dockerhub-token:
         description: 'Docker Hub token'
+        required: true
+      server-user:
+        description: 'Server username'
         required: true
     
 

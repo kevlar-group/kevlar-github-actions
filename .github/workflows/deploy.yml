@@ -69,7 +69,9 @@ jobs:
           else
             COMPOSE_CMD="docker compose"
           fi
-          
+
+          # Login to Docker Hub to avoid rate limiting
+          echo "${{ secrets.dockerhub-token }}" | docker login -u ${{ secrets.dockerhub-username }} --password-stdin
           # Pull the latest image
           docker pull ${{ secrets.dockerhub-username }}/${{ inputs.image-name }}:latest
           

@@ -24,6 +24,9 @@ on:
       dockerhub-username:
         description: 'Docker Hub username'
         required: true
+      dockerhub-token:
+        description: 'Docker Hub token'
+        required: true
         
 jobs:
   deploy:

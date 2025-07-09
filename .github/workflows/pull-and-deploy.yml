@@ -21,6 +21,9 @@ on:
       ssh-private-key:
         description: 'SSH private key for server access'
         required: true
+      dockerhub-username:
+        description: 'Docker Hub username'
+        required: true
 
 jobs:
   pull-and-deploy:

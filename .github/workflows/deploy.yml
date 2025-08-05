@@ -56,10 +56,32 @@ jobs:
 
     - name: Copy deployment files to server
       run: |
+        # Copy docker-compose.yml (required)
         scp -o StrictHostKeyChecking=no docker-compose.yml ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp -o StrictHostKeyChecking=no init-db.sql ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp -o StrictHostKeyChecking=no env.example ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        # scp -o StrictHostKeyChecking=no .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        
+        # Copy init-db.sql if it exists
+        if [ -f "init-db.sql" ]; then
+          scp -o StrictHostKeyChecking=no init-db.sql ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+          echo "✅ init-db.sql copied successfully"
+        else
+          echo "ℹ️ init-db.sql not found, skipping..."
+        fi
+        
+        # Copy env.example if it exists
+        if [ -f "env.example" ]; then
+          scp -o StrictHostKeyChecking=no env.example ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+          echo "✅ env.example copied successfully"
+        else
+          echo "ℹ️ env.example not found, skipping..."
+        fi
+        
+        # Copy .env if it exists (commented out by default)
+        # if [ -f ".env" ]; then
+        #   scp -o StrictHostKeyChecking=no .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        #   echo "✅ .env copied successfully"
+        # else
+        #   echo "ℹ️ .env not found, skipping..."
+        # fi
 
     - name: Deploy to server
       run: |

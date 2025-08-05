@@ -59,7 +59,7 @@ jobs:
         scp -o StrictHostKeyChecking=no docker-compose.yml ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
         scp -o StrictHostKeyChecking=no init-db.sql ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
         scp -o StrictHostKeyChecking=no env.example ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
-        scp -o StrictHostKeyChecking=no .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
+        # scp -o StrictHostKeyChecking=no .env ${{ secrets.server-user }}@${{ secrets.server-host }}:${{ inputs.deployment-path }}/
 
     - name: Deploy to server
       run: |

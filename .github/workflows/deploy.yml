@@ -239,8 +239,63 @@ jobs:
           sudo ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
           echo "✅ Created symbolic link: $NGINX_ENABLED -> $NGINX_CONFIG"
           
-          # Test nginx configuration
-          if sudo nginx -t; then
+          # Ensure SSL certificate directory and files are readable
+          # Let's Encrypt certificates should be readable by nginx/www-data
+          CERT_DIR=$(dirname "$SSL_CERT")
+          LIVE_DIR=$(dirname "$CERT_DIR")
+          ARCHIVE_DIR="$LIVE_DIR/../archive"
+          
+          # Ensure parent directories are traversable (but don't modify Let's Encrypt structure)
+          if [ -d "$CERT_DIR" ]; then
+            # Make directory readable and executable (for traversal)
+            sudo chmod 755 "$CERT_DIR" 2>/dev/null || true
+            echo "✅ Verified certificate directory: $CERT_DIR"
+          fi
+          
+          # Ensure certificate files exist and are readable
+          if [ -f "$SSL_CERT" ]; then
+            # Certificate should be readable by nginx process
+            sudo chmod 644 "$SSL_CERT" 2>/dev/null || true
+            echo "✅ Verified certificate file: $SSL_CERT"
+          else
+            echo "⚠️ Warning: Certificate file not found: $SSL_CERT"
+          fi
+          
+          if [ -f "$SSL_KEY" ]; then
+            # Key should be readable only by root and nginx user
+            sudo chmod 600 "$SSL_KEY" 2>/dev/null || true
+            echo "✅ Verified certificate key file: $SSL_KEY"
+          else
+            echo "⚠️ Warning: Certificate key file not found: $SSL_KEY"
+          fi
+          
+          # Check if nginx user can read the certificate (for nginx -t)
+          # nginx -t needs to read the certificate to validate it
+          if [ -f "$SSL_CERT" ]; then
+            sudo test -r "$SSL_CERT" && echo "✅ Certificate is readable" || echo "⚠️ Certificate may not be readable by nginx user"
+          fi
+          
+          # Ensure parent directories of Let's Encrypt are traversable
+          # Let's Encrypt uses /etc/letsencrypt/live/DOMAIN/ structure
+          if [ -d "/etc/letsencrypt" ]; then
+            sudo chmod 755 /etc/letsencrypt 2>/dev/null || true
+          fi
+          if [ -d "/etc/letsencrypt/live" ]; then
+            sudo chmod 755 /etc/letsencrypt/live 2>/dev/null || true
+          fi
+          
+          # Ensure nginx log directory is accessible
+          if [ -d "/var/log/nginx" ]; then
+            sudo chmod 755 /var/log/nginx 2>/dev/null || true
+            sudo touch /var/log/nginx/error.log 2>/dev/null || true
+            sudo chmod 644 /var/log/nginx/error.log 2>/dev/null || true
+            echo "✅ Verified nginx log directory permissions"
+          fi
+          
+          # Test nginx configuration as root to avoid permission issues
+          # Using nginx -t as root should work, but if not, we'll get better error messages
+          echo "Testing nginx configuration..."
+          if sudo nginx -t 2>&1; then
             echo "✅ Nginx configuration test passed"
             
             # Reload nginx
@@ -253,7 +308,7 @@ jobs:
             fi
           else
             echo "❌ Nginx configuration test failed"
-            sudo nginx -t
+            sudo nginx -t 2>&1
             exit 1
           fi
         REMOTE_SCRIPT

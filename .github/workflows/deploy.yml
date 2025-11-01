@@ -155,6 +155,7 @@ jobs:
           NGINX_FQDN="${{ inputs.nginx-fqdn }}"
           SSL_CERT="${{ inputs.ssl-cert-path }}"
           SSL_KEY="${{ inputs.ssl-cert-key-path }}"
+          SUDO_PASSWORD="Rwanda@12345"
           
           # Split FQDN by comma and create server_name line
           SERVER_NAMES=$(echo "$NGINX_FQDN" | tr ',' ' ')
@@ -162,8 +163,8 @@ jobs:
           # Create nginx config file
           NGINX_CONFIG="/etc/nginx/sites-available/$NGINX_SERVICE_NAME"
           
-          # Write nginx config using printf to avoid heredoc YAML issues
-          printf '%s\n' \
+          # Write nginx config using printf and sudo tee to avoid heredoc YAML issues
+          { echo "$SUDO_PASSWORD"; printf '%s\n' \
             "# HTTPS Server Block for $NGINX_SERVICE_NAME" \
             "server {" \
             "    listen 443 ssl;" \
@@ -222,7 +223,7 @@ jobs:
             "    location / {" \
             "        return 301 https://\$host\$request_uri;" \
             "    }" \
-            "}" > "$NGINX_CONFIG"
+            "}"; } | sudo -S tee "$NGINX_CONFIG" > /dev/null
           
           echo "✅ Created nginx config file: $NGINX_CONFIG"
           
@@ -231,29 +232,29 @@ jobs:
           
           # Remove existing link if it exists
           if [ -L "$NGINX_ENABLED" ]; then
-            rm "$NGINX_ENABLED"
+            echo "$SUDO_PASSWORD" | sudo -S rm "$NGINX_ENABLED"
             echo "ℹ️ Removed existing symbolic link"
           fi
           
           # Create new symbolic link
-          ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
+          echo "$SUDO_PASSWORD" | sudo -S ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
           echo "✅ Created symbolic link: $NGINX_ENABLED -> $NGINX_CONFIG"
           
           # Test nginx configuration
-          if nginx -t; then
+          if echo "$SUDO_PASSWORD" | sudo -S nginx -t; then
             echo "✅ Nginx configuration test passed"
             
             # Reload nginx
-            if systemctl reload nginx; then
+            if echo "$SUDO_PASSWORD" | sudo -S systemctl reload nginx; then
               echo "✅ Nginx reloaded successfully"
             else
               echo "⚠️ Failed to reload nginx, attempting restart..."
-              systemctl restart nginx
+              echo "$SUDO_PASSWORD" | sudo -S systemctl restart nginx
               echo "✅ Nginx restarted"
             fi
           else
             echo "❌ Nginx configuration test failed"
-            nginx -t
+            echo "$SUDO_PASSWORD" | sudo -S nginx -t
             exit 1
           fi
         REMOTE_SCRIPT

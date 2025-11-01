@@ -302,6 +302,59 @@ The workflows use the following environment variables for database connections:
 - Make sure to replace `your-org` with your actual GitHub organization name
 - Use `@main` or `@v1.0.0` to pin to specific versions of the workflows
 
+## Troubleshooting
+
+### Passwordless Sudo Configuration
+
+The deploy workflow with nginx configuration requires passwordless sudo access. If you encounter errors like:
+```
+sudo: a password is required
+```
+
+You need to configure passwordless sudo for your deployment user (typically `kevlar`).
+
+#### Quick Setup (Recommended)
+
+1. **SSH into your server** as a user with sudo access
+2. **Run the setup script:**
+   ```bash
+   bash setup-sudo-passwordless.sh
+   ```
+
+#### Manual Setup
+
+1. **SSH into your server** as root or a user with sudo access
+2. **Create a sudoers.d file** (preferred method):
+   ```bash
+   sudo visudo -f /etc/sudoers.d/kevlar-passwordless
+   ```
+   
+   Add this line:
+   ```
+   kevlar ALL=(ALL) NOPASSWD: ALL
+   ```
+   
+   Save and exit (in vi: press `ESC`, type `:wq`, press `ENTER`)
+
+3. **Verify the syntax:**
+   ```bash
+   sudo visudo -c
+   ```
+
+4. **Test passwordless sudo:**
+   ```bash
+   sudo -n true
+   ```
+   If it works without prompting for a password, you're all set!
+
+5. **Log out and log back in** for changes to take effect
+
+#### Important Notes
+
+- The sudoers file syntax is strict - use `visudo` to edit it safely
+- `/etc/sudoers.d/` files should have `0440` permissions
+- Test with `sudo -n true` to verify passwordless sudo works
+
 ## Support
 
 For issues or questions about these reusable workflows, please open an issue in this repository. 

@@ -11,6 +11,33 @@ on:
         required: false
         type: string
         default: '/opt/app'
+      enable-nginx:
+        description: 'Enable nginx configuration'
+        required: false
+        type: boolean
+        default: false
+      service-port:
+        description: 'Internal service port for nginx proxy_pass'
+        required: false
+        type: string
+      nginx-service-name:
+        description: 'Name for nginx config file (e.g., kevlar-notification-service)'
+        required: false
+        type: string
+      nginx-fqdn:
+        description: 'FQDN(s) for the service (comma-separated for multiple, e.g., service.kevlargroup.xyz www.service.kevlargroup.xyz)'
+        required: false
+        type: string
+      ssl-cert-path:
+        description: 'SSL certificate path'
+        required: false
+        type: string
+        default: '/etc/letsencrypt/live/kevlargroup.xyz/fullchain.pem'
+      ssl-cert-key-path:
+        description: 'SSL certificate key path'
+        required: false
+        type: string
+        default: '/etc/letsencrypt/live/kevlargroup.xyz/privkey.pem'
     secrets:    
       ssh-private-key:
         description: 'SSH private key for server access'
@@ -112,6 +139,124 @@ jobs:
           # Show running containers
           $COMPOSE_CMD -f docker-compose.yml ps
         EOF
+
+    - name: Configure Nginx
+      if: inputs.enable-nginx == true
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} 'bash -s' << 'REMOTE_SCRIPT'
+          # Validate required inputs
+          if [ -z "${{ inputs.service-port }}" ] || [ -z "${{ inputs.nginx-service-name }}" ] || [ -z "${{ inputs.nginx-fqdn }}" ]; then
+            echo "❌ Error: service-port, nginx-service-name, and nginx-fqdn are required when enable-nginx is true"
+            exit 1
+          fi
+          
+          NGINX_SERVICE_NAME="${{ inputs.nginx-service-name }}"
+          SERVICE_PORT="${{ inputs.service-port }}"
+          NGINX_FQDN="${{ inputs.nginx-fqdn }}"
+          SSL_CERT="${{ inputs.ssl-cert-path }}"
+          SSL_KEY="${{ inputs.ssl-cert-key-path }}"
+          
+          # Split FQDN by comma and create server_name line
+          SERVER_NAMES=$(echo "$NGINX_FQDN" | tr ',' ' ')
+          
+          # Create nginx config file
+          NGINX_CONFIG="/etc/nginx/sites-available/$NGINX_SERVICE_NAME"
+          
+          # Write nginx config using printf to avoid heredoc YAML issues
+          printf '%s\n' \
+            "# HTTPS Server Block for $NGINX_SERVICE_NAME" \
+            "server {" \
+            "    listen 443 ssl;" \
+            "    server_name $SERVER_NAMES;" \
+            "" \
+            "    # SSL Certificate paths" \
+            "    ssl_certificate $SSL_CERT;" \
+            "    ssl_certificate_key $SSL_KEY;" \
+            "" \
+            "    # Optional SSL settings for better security" \
+            "    ssl_protocols TLSv1.2 TLSv1.3;" \
+            "    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';" \
+            "    ssl_prefer_server_ciphers on;" \
+            "    ssl_session_cache shared:SSL:10m;" \
+            "    ssl_session_timeout 1h;" \
+            "    ssl_session_tickets off;" \
+            "" \
+            "    # HSTS (HTTP Strict Transport Security) (optional)" \
+            "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" \
+            "" \
+            "    location / {" \
+            "        proxy_pass http://127.0.0.1:$SERVICE_PORT;" \
+            "        proxy_set_header Host \$host;" \
+            "        proxy_set_header X-Real-IP \$remote_addr;" \
+            "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" \
+            "        proxy_set_header X-Forwarded-Proto \$scheme;" \
+            "        " \
+            "        # Additional headers for API" \
+            "        proxy_set_header X-Forwarded-Host \$host;" \
+            "        proxy_set_header X-Forwarded-Port \$server_port;" \
+            "        " \
+            "        # Timeout settings" \
+            "        proxy_connect_timeout 60s;" \
+            "        proxy_send_timeout 60s;" \
+            "        proxy_read_timeout 60s;" \
+            "    }" \
+            "    " \
+            "    # Health check endpoint" \
+            "    location /actuator/health {" \
+            "        proxy_pass http://127.0.0.1:$SERVICE_PORT/actuator/health;" \
+            "        proxy_set_header Host \$host;" \
+            "        proxy_set_header X-Real-IP \$remote_addr;" \
+            "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" \
+            "        proxy_set_header X-Forwarded-Proto \$scheme;" \
+            "        " \
+            "        # Allow health checks without authentication" \
+            "        proxy_set_header Authorization \"\";" \
+            "    }" \
+            "}" \
+            "" \
+            "# Redirect HTTP to HTTPS" \
+            "server {" \
+            "    listen 80;" \
+            "    server_name $SERVER_NAMES;" \
+            "" \
+            "    location / {" \
+            "        return 301 https://\$host\$request_uri;" \
+            "    }" \
+            "}" > "$NGINX_CONFIG"
+          
+          echo "✅ Created nginx config file: $NGINX_CONFIG"
+          
+          # Create symbolic link in sites-enabled
+          NGINX_ENABLED="/etc/nginx/sites-enabled/$NGINX_SERVICE_NAME"
+          
+          # Remove existing link if it exists
+          if [ -L "$NGINX_ENABLED" ]; then
+            rm "$NGINX_ENABLED"
+            echo "ℹ️ Removed existing symbolic link"
+          fi
+          
+          # Create new symbolic link
+          ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
+          echo "✅ Created symbolic link: $NGINX_ENABLED -> $NGINX_CONFIG"
+          
+          # Test nginx configuration
+          if nginx -t; then
+            echo "✅ Nginx configuration test passed"
+            
+            # Reload nginx
+            if systemctl reload nginx; then
+              echo "✅ Nginx reloaded successfully"
+            else
+              echo "⚠️ Failed to reload nginx, attempting restart..."
+              systemctl restart nginx
+              echo "✅ Nginx restarted"
+            fi
+          else
+            echo "❌ Nginx configuration test failed"
+            nginx -t
+            exit 1
+          fi
+        REMOTE_SCRIPT
 
     - name: Verify deployment
       run: |

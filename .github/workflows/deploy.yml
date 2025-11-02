@@ -144,6 +144,27 @@ jobs:
       if: inputs.enable-nginx == true
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} 'bash -s' << 'REMOTE_SCRIPT'
+          # Test passwordless sudo access first
+          echo "Testing passwordless sudo configuration..."
+          if sudo -n true 2>/dev/null; then
+            echo "✅ Passwordless sudo verified (non-interactive)"
+          else
+            echo "⚠️ Warning: Passwordless sudo test failed (non-interactive)"
+            echo "Attempting interactive sudo test..."
+            if sudo true 2>/dev/null; then
+              echo "✅ Interactive sudo works, but non-interactive may need configuration"
+              echo "Please ensure sudoers allows non-interactive sessions"
+            else
+              echo "❌ Error: Sudo is not working at all."
+              echo "Please configure passwordless sudo by running on the server:"
+              echo "  sudo visudo -f /etc/sudoers.d/kevlar-passwordless"
+              echo "  Add this line: kevlar ALL=(ALL) NOPASSWD: ALL"
+              echo "  Then save, verify with: sudo visudo -c"
+              echo "  And test with: sudo -n true"
+              exit 1
+            fi
+          fi
+          
           # Validate required inputs
           if [ -z "${{ inputs.service-port }}" ] || [ -z "${{ inputs.nginx-service-name }}" ] || [ -z "${{ inputs.nginx-fqdn }}" ]; then
             echo "❌ Error: service-port, nginx-service-name, and nginx-fqdn are required when enable-nginx is true"

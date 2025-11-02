@@ -348,7 +348,10 @@ jobs:
     - name: Verify deployment
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
+          cd ${{ inputs.deployment-path }}
+          
           # Wait for application to start
+          echo "Waiting for application to start..."
           sleep 30
           
           # Check if docker-compose command exists, use docker compose if not
@@ -358,19 +361,82 @@ jobs:
             COMPOSE_CMD="docker compose"
           fi
           
-          # Check if containers are running
-          if $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml ps | grep -q "Up"; then
-            echo "✅ Deployment successful! Containers are running."
+          echo "Checking container status..."
+          
+          # Check if docker-compose.yml exists
+          if [ ! -f "docker-compose.yml" ]; then
+            echo "⚠️ Warning: docker-compose.yml not found at ${{ inputs.deployment-path }}/docker-compose.yml"
+            echo "Checking for running containers with image name..."
+          fi
+          
+          # Method 1: Check using docker-compose ps
+          if [ -f "docker-compose.yml" ]; then
+            echo "Checking with docker-compose..."
+            COMPOSE_OUTPUT=$($COMPOSE_CMD -f docker-compose.yml ps 2>&1)
+            echo "$COMPOSE_OUTPUT"
             
-            # Test application health
+            if echo "$COMPOSE_OUTPUT" | grep -qiE "(Up|running|healthy)"; then
+              echo "✅ Deployment successful! Containers are running (detected via docker-compose)."
+              CONTAINERS_RUNNING=true
+            else
+              echo "⚠️ docker-compose ps didn't show running containers"
+              CONTAINERS_RUNNING=false
+            fi
+          fi
+          
+          # Method 2: Check using docker ps with image name (more reliable)
+          IMAGE_NAME="${{ secrets.dockerhub-username }}/${{ inputs.image-name }}"
+          echo "Checking for running containers with image: $IMAGE_NAME"
+          DOCKER_PS=$(docker ps --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Status}}" 2>&1)
+          
+          if [ -n "$DOCKER_PS" ] && ! echo "$DOCKER_PS" | grep -q "CONTAINER"; then
+            echo "No containers found with image: $IMAGE_NAME"
+            CONTAINERS_RUNNING=false
+          elif echo "$DOCKER_PS" | grep -qE "(Up|healthy)"; then
+            echo "$DOCKER_PS"
+            echo "✅ Deployment successful! Containers are running (detected via docker ps)."
+            CONTAINERS_RUNNING=true
+          else
+            echo "Container status:"
+            echo "$DOCKER_PS"
+            
+            # Check all containers
+            echo ""
+            echo "All running containers:"
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+            CONTAINERS_RUNNING=false
+          fi
+          
+          # Final verification and health check
+          if [ "$CONTAINERS_RUNNING" = true ]; then
+            echo ""
+            echo "✅ Deployment verified! Containers are running."
+            
+            # Test application health (optional, won't fail deployment if it fails)
+            echo "Testing application health endpoint..."
             if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
               echo "✅ Application health check passed!"
+            elif curl -f http://localhost:8080/health > /dev/null 2>&1; then
+              echo "✅ Application health check passed (alternative endpoint)!"
             else
               echo "⚠️ Application health check failed, but containers are running."
+              echo "This might be normal if the health endpoint is not available or on a different port."
             fi
           else
-            echo "❌ Deployment failed! Containers are not running."
-            $COMPOSE_CMD -f ${{ inputs.deployment-path }}/docker-compose.yml logs
+            echo ""
+            echo "❌ Deployment verification failed! Containers may not be running."
+            
+            # Show logs for debugging
+            if [ -f "docker-compose.yml" ]; then
+              echo ""
+              echo "Container logs:"
+              $COMPOSE_CMD -f docker-compose.yml logs --tail=50
+            fi
+            
+            echo ""
+            echo "Recent container logs:"
+            docker ps -a --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" | head -1 | xargs -r docker logs --tail=30
+            
             exit 1
           fi
         EOF

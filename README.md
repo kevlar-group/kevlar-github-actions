@@ -334,20 +334,67 @@ You need to configure passwordless sudo for your deployment user (typically `kev
    kevlar ALL=(ALL) NOPASSWD: ALL
    ```
    
+   **Important:** Make sure there are no typos or extra spaces. The format must be exact.
+   
    Save and exit (in vi: press `ESC`, type `:wq`, press `ENTER`)
 
-3. **Verify the syntax:**
+3. **Set proper permissions:**
+   ```bash
+   sudo chmod 0440 /etc/sudoers.d/kevlar-passwordless
+   ```
+
+4. **Verify the syntax:**
    ```bash
    sudo visudo -c
    ```
+   This should show: `/etc/sudoers.d/kevlar-passwordless: parsed OK`
 
-4. **Test passwordless sudo:**
+5. **Test passwordless sudo in non-interactive mode** (this simulates GitHub Actions):
+   ```bash
+   ssh kevlar@localhost 'sudo -n true'
+   ```
+   
+   Or test directly:
    ```bash
    sudo -n true
    ```
+   
    If it works without prompting for a password, you're all set!
 
-5. **Log out and log back in** for changes to take effect
+6. **Verify the sudoers file was read:**
+   ```bash
+   sudo cat /etc/sudoers.d/kevlar-passwordless
+   ```
+   
+   Make sure it shows exactly: `kevlar ALL=(ALL) NOPASSWD: ALL`
+
+#### Troubleshooting Non-Interactive Sudo
+
+If `sudo nginx -t` works when you SSH in manually but fails in GitHub Actions:
+
+1. **Check for conflicting sudoers rules:**
+   ```bash
+   sudo grep -r "kevlar" /etc/sudoers.d/
+   sudo grep "kevlar" /etc/sudoers
+   ```
+   
+2. **Ensure the file is in the right location with right permissions:**
+   ```bash
+   ls -la /etc/sudoers.d/kevlar-passwordless
+   ```
+   Should show: `-r--r-----` (0440 permissions)
+
+3. **Check if sudo is reading the file:**
+   ```bash
+   sudo -l
+   ```
+   This should show that kevlar can run all commands without password
+
+4. **Test non-interactive sudo:**
+   ```bash
+   sudo -n echo "test"
+   ```
+   Should work without prompting
 
 #### Important Notes
 

@@ -11,11 +11,6 @@ on:
         required: false
         type: string
         default: '/opt/app'
-      health-check-port:
-        description: 'Port for health check endpoint (default: 8080)'
-        required: false
-        type: string
-        default: '8080'
       enable-nginx:
         description: 'Enable nginx configuration'
         required: false
@@ -353,6 +348,9 @@ jobs:
     - name: Verify deployment
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
+          # Get service port for health check (use service-port if provided, otherwise default to 8080)
+          SERVICE_PORT="${{ inputs.service-port }}"
+          
           # Wait for application to start
           echo "Waiting for application to start..."
           sleep 30
@@ -371,7 +369,9 @@ jobs:
             echo "✅ Deployment verified! Containers are running."
             
             # Test application health (optional, won't fail deployment if it fails)
-            HEALTH_PORT="${{ inputs.health-check-port }}"
+            # Use service-port if provided, otherwise default to 8080
+            HEALTH_PORT="${SERVICE_PORT:-8080}"
+            
             echo ""
             echo "Testing application health endpoint on port: $HEALTH_PORT"
             if curl -f http://localhost:$HEALTH_PORT/actuator/health > /dev/null 2>&1; then

@@ -355,16 +355,30 @@ jobs:
           echo "Waiting for application to start..."
           sleep 30
           
-          # Check for running containers using docker ps with image name
-          IMAGE_NAME="${{ secrets.dockerhub-username }}/${{ inputs.image-name }}"
-          echo "Checking for running containers with image: $IMAGE_NAME"
+          # Check for running containers by name (more reliable than ancestor filter)
+          IMAGE_NAME="${{ inputs.image-name }}"
+          echo "Checking for running containers with name or image: $IMAGE_NAME"
           
-          # Get running containers with the specified image
-          RUNNING_CONTAINERS=$(docker ps --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" 2>&1)
+          # Check by container name first (container name usually matches image name)
+          RUNNING_CONTAINERS=$(docker ps --filter "name=$IMAGE_NAME" --format "{{.Names}}" 2>&1)
+          
+          # If not found by name, try by image (with and without registry prefix)
+          if [ -z "$RUNNING_CONTAINERS" ]; then
+            FULL_IMAGE_NAME="${{ secrets.dockerhub-username }}/$IMAGE_NAME"
+            RUNNING_CONTAINERS=$(docker ps --filter "ancestor=$FULL_IMAGE_NAME" --format "{{.Names}}" 2>&1)
+          fi
+          
+          # Also check with :latest tag
+          if [ -z "$RUNNING_CONTAINERS" ]; then
+            RUNNING_CONTAINERS=$(docker ps --filter "ancestor=$FULL_IMAGE_NAME:latest" --format "{{.Names}}" 2>&1)
+          fi
           
           if [ -n "$RUNNING_CONTAINERS" ]; then
             echo "✅ Found running containers:"
-            docker ps --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+            docker ps --filter "name=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" 2>/dev/null || \
+            docker ps --filter "ancestor=$FULL_IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" 2>/dev/null || \
+            docker ps --filter "ancestor=$FULL_IMAGE_NAME:latest" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" 2>/dev/null || \
+            docker ps | grep "$IMAGE_NAME"
             echo ""
             echo "✅ Deployment verified! Containers are running."
             
@@ -383,16 +397,16 @@ jobs:
               echo "This might be normal if the health endpoint is not available or on a different port."
             fi
           else
-            echo "❌ No running containers found with image: $IMAGE_NAME"
+            echo "❌ No running containers found with name or image: $IMAGE_NAME"
             echo ""
             echo "Checking all running containers:"
             docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
             echo ""
-            echo "Checking stopped containers with image: $IMAGE_NAME"
-            docker ps -a --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+            echo "Checking stopped containers with name: $IMAGE_NAME"
+            docker ps -a --filter "name=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
             
             # Show logs for debugging
-            STOPPED_CONTAINER=$(docker ps -a --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" | head -1)
+            STOPPED_CONTAINER=$(docker ps -a --filter "name=$IMAGE_NAME" --format "{{.Names}}" | head -1)
             if [ -n "$STOPPED_CONTAINER" ]; then
               echo ""
               echo "Recent logs from container: $STOPPED_CONTAINER"

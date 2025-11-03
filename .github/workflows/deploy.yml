@@ -11,6 +11,11 @@ on:
         required: false
         type: string
         default: '/opt/app'
+      health-check-port:
+        description: 'Port for health check endpoint (default: 8080)'
+        required: false
+        type: string
+        default: '8080'
       enable-nginx:
         description: 'Enable nginx configuration'
         required: false
@@ -348,94 +353,51 @@ jobs:
     - name: Verify deployment
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << 'EOF'
-          cd ${{ inputs.deployment-path }}
-          
           # Wait for application to start
           echo "Waiting for application to start..."
           sleep 30
           
-          # Check if docker-compose command exists, use docker compose if not
-          if command -v docker-compose &> /dev/null; then
-            COMPOSE_CMD="docker-compose"
-          else
-            COMPOSE_CMD="docker compose"
-          fi
-          
-          echo "Checking container status..."
-          
-          # Check if docker-compose.yml exists
-          if [ ! -f "docker-compose.yml" ]; then
-            echo "⚠️ Warning: docker-compose.yml not found at ${{ inputs.deployment-path }}/docker-compose.yml"
-            echo "Checking for running containers with image name..."
-          fi
-          
-          # Method 1: Check using docker-compose ps
-          if [ -f "docker-compose.yml" ]; then
-            echo "Checking with docker-compose..."
-            COMPOSE_OUTPUT=$($COMPOSE_CMD -f docker-compose.yml ps 2>&1)
-            echo "$COMPOSE_OUTPUT"
-            
-            if echo "$COMPOSE_OUTPUT" | grep -qiE "(Up|running|healthy)"; then
-              echo "✅ Deployment successful! Containers are running (detected via docker-compose)."
-              CONTAINERS_RUNNING=true
-            else
-              echo "⚠️ docker-compose ps didn't show running containers"
-              CONTAINERS_RUNNING=false
-            fi
-          fi
-          
-          # Method 2: Check using docker ps with image name (more reliable)
+          # Check for running containers using docker ps with image name
           IMAGE_NAME="${{ secrets.dockerhub-username }}/${{ inputs.image-name }}"
           echo "Checking for running containers with image: $IMAGE_NAME"
-          DOCKER_PS=$(docker ps --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Status}}" 2>&1)
           
-          if [ -n "$DOCKER_PS" ] && ! echo "$DOCKER_PS" | grep -q "CONTAINER"; then
-            echo "No containers found with image: $IMAGE_NAME"
-            CONTAINERS_RUNNING=false
-          elif echo "$DOCKER_PS" | grep -qE "(Up|healthy)"; then
-            echo "$DOCKER_PS"
-            echo "✅ Deployment successful! Containers are running (detected via docker ps)."
-            CONTAINERS_RUNNING=true
-          else
-            echo "Container status:"
-            echo "$DOCKER_PS"
-            
-            # Check all containers
-            echo ""
-            echo "All running containers:"
-            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-            CONTAINERS_RUNNING=false
-          fi
+          # Get running containers with the specified image
+          RUNNING_CONTAINERS=$(docker ps --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" 2>&1)
           
-          # Final verification and health check
-          if [ "$CONTAINERS_RUNNING" = true ]; then
+          if [ -n "$RUNNING_CONTAINERS" ]; then
+            echo "✅ Found running containers:"
+            docker ps --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
             echo ""
             echo "✅ Deployment verified! Containers are running."
             
             # Test application health (optional, won't fail deployment if it fails)
-            echo "Testing application health endpoint..."
-            if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+            HEALTH_PORT="${{ inputs.health-check-port }}"
+            echo ""
+            echo "Testing application health endpoint on port: $HEALTH_PORT"
+            if curl -f http://localhost:$HEALTH_PORT/actuator/health > /dev/null 2>&1; then
               echo "✅ Application health check passed!"
-            elif curl -f http://localhost:8080/health > /dev/null 2>&1; then
+            elif curl -f http://localhost:$HEALTH_PORT/health > /dev/null 2>&1; then
               echo "✅ Application health check passed (alternative endpoint)!"
             else
               echo "⚠️ Application health check failed, but containers are running."
               echo "This might be normal if the health endpoint is not available or on a different port."
             fi
           else
+            echo "❌ No running containers found with image: $IMAGE_NAME"
             echo ""
-            echo "❌ Deployment verification failed! Containers may not be running."
+            echo "Checking all running containers:"
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+            echo ""
+            echo "Checking stopped containers with image: $IMAGE_NAME"
+            docker ps -a --filter "ancestor=$IMAGE_NAME" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
             
             # Show logs for debugging
-            if [ -f "docker-compose.yml" ]; then
+            STOPPED_CONTAINER=$(docker ps -a --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" | head -1)
+            if [ -n "$STOPPED_CONTAINER" ]; then
               echo ""
-              echo "Container logs:"
-              $COMPOSE_CMD -f docker-compose.yml logs --tail=50
+              echo "Recent logs from container: $STOPPED_CONTAINER"
+              docker logs --tail=50 "$STOPPED_CONTAINER"
             fi
-            
-            echo ""
-            echo "Recent container logs:"
-            docker ps -a --filter "ancestor=$IMAGE_NAME" --format "{{.Names}}" | head -1 | xargs -r docker logs --tail=30
             
             exit 1
           fi

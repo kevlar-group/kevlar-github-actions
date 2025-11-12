@@ -86,8 +86,8 @@ jobs:
         echo "Project ID: $VERCEL_PROJECT_ID"
         echo "Org ID: $VERCEL_ORG_ID"
         
-        # Try to pull environment variables
-        vercel pull --yes --environment=production --token=$VERCEL_TOKEN || {
+        # Try to pull environment variables with scope
+        vercel pull --yes --environment=production --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID || {
           echo "⚠️ Warning: vercel pull failed, but continuing..."
           echo "This might be normal if environment variables are not needed or already set in Vercel dashboard."
         }
@@ -98,7 +98,7 @@ jobs:
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
-        vercel build --prod --token=$VERCEL_TOKEN
+        vercel build --prod --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID
 
     - name: Deploy Project Artifacts to Vercel (Production)
       env:
@@ -106,7 +106,8 @@ jobs:
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
-        vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+        # Use --scope to deploy as token owner instead of Git author
+        vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')
 
     - name: Deploy Preview to Vercel (Preview)
@@ -115,15 +116,17 @@ jobs:
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
-        vercel deploy --prebuilt --token=$VERCEL_TOKEN
+        # Use --scope to deploy as token owner instead of Git author
+        vercel deploy --prebuilt --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID
       if: github.event_name == 'pull_request'
 
     - name: Get deployment URL
       id: deployment
       env:
         VERCEL_TOKEN: ${{ secrets.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
       run: |
-        DEPLOYMENT_URL=$(vercel ls --token $VERCEL_TOKEN | grep ${{ inputs.vercel-project-name }} | head -1 | awk '{print $2}')
+        DEPLOYMENT_URL=$(vercel ls --token $VERCEL_TOKEN --scope=$VERCEL_ORG_ID | grep ${{ inputs.vercel-project-name }} | head -1 | awk '{print $2}')
         echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
         echo "✅ Deployed to: $DEPLOYMENT_URL"
 

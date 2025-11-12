@@ -86,6 +86,26 @@ jobs:
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
         echo "✅ Git configured for Vercel deployment"
 
+    - name: Link Vercel Project
+      env:
+        VERCEL_TOKEN: ${{ secrets.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+      run: |
+        echo "Linking Vercel project..."
+        echo "Project ID: $VERCEL_PROJECT_ID"
+        echo "Org ID: $VERCEL_ORG_ID"
+        
+        # Create .vercel directory and project.json to link the project
+        mkdir -p .vercel
+        cat > .vercel/project.json << EOF
+        {
+          "projectId": "$VERCEL_PROJECT_ID",
+          "orgId": "$VERCEL_ORG_ID"
+        }
+        EOF
+        echo "✅ Created .vercel/project.json"
+
     - name: Pull Vercel Environment Information
       env:
         VERCEL_TOKEN: ${{ secrets.vercel-token }}
@@ -93,8 +113,6 @@ jobs:
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
         echo "Pulling Vercel environment variables..."
-        echo "Project ID: $VERCEL_PROJECT_ID"
-        echo "Org ID: $VERCEL_ORG_ID"
         
         # Try to pull environment variables with scope
         vercel pull --yes --environment=production --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID || {

@@ -131,6 +131,19 @@ jobs:
 **Secrets:**
 - `vercel-token` (required): Vercel authentication token
 
+**Important Note - Git Author Access:**
+Vercel requires that the Git author (from commit metadata) has access to the Vercel team. If you see the error:
+```
+Error: Git author <email> must have access to the team <team-name>'s projects on Vercel to create deployments.
+```
+
+**Solution:** Add the GitHub user to your Vercel team:
+1. Go to your Vercel team settings: `https://vercel.com/teams/<your-team-id>/settings/members`
+2. Click "Add Member" and invite the GitHub user (or their email)
+3. Ensure they have deployment permissions
+
+Alternatively, ensure the Vercel token owner has full team access and deployment permissions.
+
 ### 5. SonarQube Workflow (`sonarqube.yml`)
 Runs SonarQube code quality analysis for multiple languages.
 

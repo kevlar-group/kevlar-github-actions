@@ -1,0 +1,53 @@
+name: Build and Deploy Static Site
+
+on:
+  push:
+    branches: [ main, master, dev ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+# Add permissions for security scanning
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: gc-frontend-web
+
+jobs:
+  # Static Site Deployment (for React.js, Next.js, Vue, etc.)
+  deploy-static:
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/deploy-static.yml@main
+    with:
+      project-name: 'gc-frontend-web'
+      build-command: 'npm run build'
+      build-dir: 'dist'  # For Next.js static export use 'out', for React/Vite use 'dist', for CRA use 'build'
+      node-version: '20'
+      api-url: 'https://gc-api.kevlargroup.xyz'
+      enable-nginx: true
+      service-port: '80'
+      nginx-service-name: 'gc-frontend-web'
+      nginx-fqdn: 'gc-frontend.kevlargroup.xyz www.gc-frontend.kevlargroup.xyz'
+    secrets:
+      ssh-private-key: |
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        your-ssh-private-key-here
+        -----END OPENSSH PRIVATE KEY-----
+      server-host: '162.0.224.146'
+      server-user: 'kevlar'
+
+  # SonarQube analysis using reusable workflow
+  # sonarqube:
+  #   uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
+  #   with:
+  #     java-version: '17'
+  #     project-type: 'nextjs'  # Options: java, react, nextjs, nestjs
+  #     sonar-project-key: 'gc-frontend-web'
+  #     sonar-project-name: 'gc-frontend-web'
+  #   secrets:
+  #     sonar-token: 'sqp_158d2985f2e0827cd42ea62b4635301b1d87859a'
+  #     sonar-host-url: 'http://162.0.224.146:9090'
+

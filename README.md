@@ -285,7 +285,7 @@ jobs:
 - `sonar-token` (required): SonarQube token
 - `sonar-host-url` (required): SonarQube host URL
 
-### 6. Pull and Deploy Workflow (`pull-and-deploy.yml`)
+### 8. Pull and Deploy Workflow (`pull-and-deploy.yml`)
 Pulls the latest image and deploys to server.
 
 **Usage:**

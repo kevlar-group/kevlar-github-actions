@@ -311,23 +311,41 @@ jobs:
         ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << EOF
           echo "Verifying deployment at: $DEPLOY_PATH"
           
-          # Check if deployment directory exists and has files
-          if [ -d "$DEPLOY_PATH" ] && [ "$(ls -A $DEPLOY_PATH)" ]; then
-            echo "✅ Deployment verified! Files are present in $DEPLOY_PATH"
+          # Check if deployment directory exists
+          if [ ! -d "$DEPLOY_PATH" ]; then
+            echo "❌ Deployment directory does not exist: $DEPLOY_PATH"
+            exit 1
+          fi
+          
+          # Count files in directory (more reliable than ls -A check)
+          FILE_COUNT=$(find "$DEPLOY_PATH" -mindepth 1 -maxdepth 1 | wc -l)
+          
+          if [ "$FILE_COUNT" -gt 0 ]; then
+            echo "✅ Deployment verified! Found $FILE_COUNT items in $DEPLOY_PATH"
             echo ""
             echo "Deployed files:"
-            ls -lah $DEPLOY_PATH | head -20
+            ls -lah "$DEPLOY_PATH" | head -20
+            echo ""
             
             # Check for index.html
             if [ -f "$DEPLOY_PATH/index.html" ]; then
-              echo ""
               echo "✅ index.html found - static site is ready!"
             else
-              echo ""
-              echo "⚠️ Warning: index.html not found. Make sure your build outputs an index.html file."
+              echo "⚠️ Warning: index.html not found in root."
+              echo "Checking for other common entry points..."
+              
+              # Check for other common entry files
+              if [ -f "$DEPLOY_PATH/index.txt" ]; then
+                echo "ℹ️ Found index.txt (Next.js static export)"
+              fi
+              
+              # List first few files to help debug
+              echo "First few files in directory:"
+              ls -1 "$DEPLOY_PATH" | head -10
             fi
           else
-            echo "❌ Deployment verification failed! Directory is empty or doesn't exist."
+            echo "❌ Deployment verification failed! Directory is empty."
+            echo "Directory exists but contains no files."
             exit 1
           fi
         EOF

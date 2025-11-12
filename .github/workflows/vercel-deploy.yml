@@ -69,12 +69,22 @@ jobs:
         VERCEL_TOKEN: ${{ secrets.vercel-token }}
       run: |
         echo "Verifying Vercel token..."
-        vercel whoami --token=$VERCEL_TOKEN || {
+        VERCEL_USER=$(vercel whoami --token=$VERCEL_TOKEN) || {
           echo "❌ Error: Vercel token authentication failed!"
           echo "Please verify that VERCEL_TOKEN secret is correct and has proper permissions."
           exit 1
         }
         echo "✅ Vercel authentication successful"
+        echo "Authenticated as: $VERCEL_USER"
+        echo "VERCEL_USER=$VERCEL_USER" >> $GITHUB_ENV
+
+    - name: Configure Git for Vercel
+      run: |
+        # Configure Git to use a user that has access to Vercel team
+        # This helps avoid "Git author must have access" errors
+        git config --global user.name "Vercel Deploy"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+        echo "✅ Git configured for Vercel deployment"
 
     - name: Pull Vercel Environment Information
       env:
@@ -106,8 +116,16 @@ jobs:
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
-        # Use --scope to deploy as token owner instead of Git author
-        vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID
+        # Deploy with explicit scope to use token owner instead of Git author
+        vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --force || {
+          echo "❌ Deployment failed!"
+          echo ""
+          echo "If you see 'Git author must have access' error:"
+          echo "1. Add the GitHub user (${{ github.actor }}) to your Vercel team: $VERCEL_ORG_ID"
+          echo "2. Or ensure the Vercel token owner has access to deploy"
+          echo "3. Visit: https://vercel.com/teams/$VERCEL_ORG_ID/settings/members"
+          exit 1
+        }
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')
 
     - name: Deploy Preview to Vercel (Preview)
@@ -116,8 +134,16 @@ jobs:
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
-        # Use --scope to deploy as token owner instead of Git author
-        vercel deploy --prebuilt --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID
+        # Deploy with explicit scope to use token owner instead of Git author
+        vercel deploy --prebuilt --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --force || {
+          echo "❌ Deployment failed!"
+          echo ""
+          echo "If you see 'Git author must have access' error:"
+          echo "1. Add the GitHub user (${{ github.actor }}) to your Vercel team: $VERCEL_ORG_ID"
+          echo "2. Or ensure the Vercel token owner has access to deploy"
+          echo "3. Visit: https://vercel.com/teams/$VERCEL_ORG_ID/settings/members"
+          exit 1
+        }
       if: github.event_name == 'pull_request'
 
     - name: Get deployment URL

@@ -144,7 +144,57 @@ Error: Git author <email> must have access to the team <team-name>'s projects on
 
 Alternatively, ensure the Vercel token owner has full team access and deployment permissions.
 
-### 5. SonarQube Workflow (`sonarqube.yml`)
+### 5. Netlify Deploy Workflow (`netlify-deploy.yml`)
+Deploys applications to Netlify platform.
+
+**Usage:**
+```yaml
+name: Deploy to Netlify
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy-netlify:
+    uses: your-org/kevlar-github-actions/.github/workflows/netlify-deploy.yml@main
+    with:
+      project-type: 'nextjs'  # Options: react, nextjs, nestjs, static
+      netlify-site-id: ${{ vars.NETLIFY_SITE_ID }}
+      netlify-site-name: 'my-app'  # Optional: your-site.netlify.app
+      node-version: '20'
+      build-command: 'npm run build'
+      publish-dir: '.next'  # Optional: dist, build, .next, etc.
+      api-url: 'https://api.example.com'
+      production-branch: 'main'
+    secrets:
+      netlify-token: ${{ secrets.NETLIFY_TOKEN }}
+```
+
+**Inputs:**
+- `project-type` (optional): Project type (react, nextjs, nestjs, static) (default: 'nextjs')
+- `netlify-site-id` (required): Netlify site ID
+- `netlify-site-name` (optional): Netlify site name (for URL construction)
+- `node-version` (optional): Node.js version (default: '20')
+- `build-command` (optional): Build command (default: 'npm run build')
+- `publish-dir` (optional): Directory to publish (e.g., dist, build, .next)
+- `api-url` (optional): API URL for environment variable
+- `production-branch` (optional): Production branch name (default: 'main')
+
+**Secrets:**
+- `netlify-token` (required): Netlify authentication token
+
+**Notes:**
+- Production deployments run on pushes to the production branch (default: main)
+- Preview deployments run on pull requests
+- The `publish-dir` should match your build output directory:
+  - Next.js: `.next` or `out` (for static export)
+  - React: `build` or `dist`
+  - Vue: `dist`
+  - Static sites: root directory or `public`
+
+### 6. SonarQube Workflow (`sonarqube.yml`)
 Runs SonarQube code quality analysis for multiple languages.
 
 **Usage:**
@@ -283,6 +333,7 @@ jobs:
 - `SONAR_TOKEN`: SonarQube authentication token
 - `SONAR_HOST_URL`: SonarQube host URL
 - `VERCEL_TOKEN`: Vercel authentication token
+- `NETLIFY_TOKEN`: Netlify authentication token
 
 ### Repository Variables:
 - `SONAR_PROJECT_KEY`: SonarQube project key
@@ -290,7 +341,9 @@ jobs:
 - `VERCEL_PROJECT_ID`: Vercel project ID
 - `VERCEL_ORG_ID`: Vercel organization ID
 - `VERCEL_PROJECT_NAME`: Vercel project name
-- `DEPLOYMENT_TYPE`: Deployment type ('server' or 'vercel')
+- `NETLIFY_SITE_ID`: Netlify site ID
+- `NETLIFY_SITE_NAME`: Netlify site name (optional)
+- `DEPLOYMENT_TYPE`: Deployment type ('server', 'vercel', or 'netlify')
 
 ## Prerequisites
 
@@ -299,6 +352,7 @@ jobs:
 3. **SonarQube Configuration**: A `sonar-project.properties` file for SonarQube analysis
 4. **Server Access**: SSH access to your deployment server (for traditional deployment)
 5. **Vercel Project**: Configured Vercel project (for Vercel deployment)
+6. **Netlify Project**: Configured Netlify site (for Netlify deployment)
 
 ## Environment Variables
 

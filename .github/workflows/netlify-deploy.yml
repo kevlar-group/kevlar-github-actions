@@ -1,0 +1,192 @@
+name: Netlify Deploy Job
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Project type (react, nextjs, nestjs, static)'
+        required: false
+        type: string
+        default: 'nextjs'
+      netlify-site-id:
+        description: 'Netlify site ID'
+        required: true
+        type: string
+      netlify-site-name:
+        description: 'Netlify site name'
+        required: false
+        type: string
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      build-command:
+        description: 'Build command to run'
+        required: false
+        type: string
+        default: 'npm run build'
+      publish-dir:
+        description: 'Directory to publish (e.g., dist, build, .next)'
+        required: false
+        type: string
+        default: ''
+      api-url:
+        description: 'API URL for environment variable'
+        required: false
+        type: string
+        default: ''
+      production-branch:
+        description: 'Production branch name'
+        required: false
+        type: string
+        default: 'main'
+    secrets:
+      netlify-token:
+        description: 'Netlify authentication token'
+        required: true
+
+jobs:
+  netlify-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: ${{ inputs.build-command }}
+      env:
+        NEXT_PUBLIC_API_URL: ${{ inputs.api-url }}
+        REACT_APP_API_URL: ${{ inputs.api-url }}
+        API_URL: ${{ inputs.api-url }}
+
+    - name: Install Netlify CLI
+      run: npm install --global netlify-cli
+
+    - name: Verify Netlify Authentication
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.netlify-token }}
+      run: |
+        echo "Verifying Netlify token..."
+        NETLIFY_USER=$(netlify status --auth $NETLIFY_AUTH_TOKEN 2>&1 | grep -i "Logged in as" || netlify whoami --auth $NETLIFY_AUTH_TOKEN) || {
+          echo "❌ Error: Netlify token authentication failed!"
+          echo "Please verify that NETLIFY_TOKEN secret is correct and has proper permissions."
+          exit 1
+        }
+        echo "✅ Netlify authentication successful"
+        echo "Authenticated user: $NETLIFY_USER"
+
+    - name: Deploy to Netlify (Production)
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.netlify-token }}
+        NETLIFY_SITE_ID: ${{ inputs.netlify-site-id }}
+      run: |
+        echo "Deploying to Netlify (Production)..."
+        echo "Site ID: $NETLIFY_SITE_ID"
+        
+        # Build deployment command
+        DEPLOY_CMD="netlify deploy --prod --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID"
+        
+        # Add publish directory if specified
+        if [ -n "${{ inputs.publish-dir }}" ]; then
+          DEPLOY_CMD="$DEPLOY_CMD --dir=${{ inputs.publish-dir }}"
+        fi
+        
+        # Execute deployment
+        $DEPLOY_CMD || {
+          echo "❌ Deployment failed!"
+          echo ""
+          echo "Common issues:"
+          echo "1. Verify NETLIFY_TOKEN secret is correct"
+          echo "2. Ensure the token has access to site: $NETLIFY_SITE_ID"
+          echo "3. Check that the build output directory exists"
+          echo "4. Verify site ID is correct"
+          exit 1
+        }
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/${{ inputs.production-branch }}' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    - name: Deploy Preview to Netlify
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.netlify-token }}
+        NETLIFY_SITE_ID: ${{ inputs.netlify-site-id }}
+      run: |
+        echo "Deploying preview to Netlify..."
+        echo "Site ID: $NETLIFY_SITE_ID"
+        
+        # Build deployment command
+        DEPLOY_CMD="netlify deploy --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID"
+        
+        # Add publish directory if specified
+        if [ -n "${{ inputs.publish-dir }}" ]; then
+          DEPLOY_CMD="$DEPLOY_CMD --dir=${{ inputs.publish-dir }}"
+        fi
+        
+        # Execute deployment
+        DEPLOY_OUTPUT=$($DEPLOY_CMD 2>&1) || {
+          echo "❌ Preview deployment failed!"
+          echo "$DEPLOY_OUTPUT"
+          echo ""
+          echo "Common issues:"
+          echo "1. Verify NETLIFY_TOKEN secret is correct"
+          echo "2. Ensure the token has access to site: $NETLIFY_SITE_ID"
+          echo "3. Check that the build output directory exists"
+          exit 1
+        }
+        
+        # Extract preview URL from output
+        PREVIEW_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.netlify\.app' | head -1)
+        if [ -n "$PREVIEW_URL" ]; then
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+          echo "✅ Preview URL: $PREVIEW_URL"
+        fi
+      if: github.event_name == 'pull_request'
+
+    - name: Get deployment URL
+      id: deployment
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.netlify-token }}
+        NETLIFY_SITE_ID: ${{ inputs.netlify-site-id }}
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          # For PRs, use the preview URL from previous step
+          echo "deployment_url=${{ steps.deployment.outputs.preview_url }}" >> $GITHUB_OUTPUT
+        else
+          # For production, construct the site URL
+          if [ -n "${{ inputs.netlify-site-name }}" ]; then
+            DEPLOYMENT_URL="https://${{ inputs.netlify-site-name }}.netlify.app"
+          else
+            DEPLOYMENT_URL=$(netlify status --auth $NETLIFY_AUTH_TOKEN --site $NETLIFY_SITE_ID 2>&1 | grep -oP 'https://[^\s]+\.netlify\.app' | head -1 || echo "https://app.netlify.com/sites/$NETLIFY_SITE_ID")
+          fi
+          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: $DEPLOYMENT_URL"
+        fi
+
+    - name: Comment deployment URL
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const previewUrl = '${{ steps.deployment.outputs.preview_url }}';
+          const deploymentUrl = '${{ steps.deployment.outputs.deployment_url }}';
+          const url = previewUrl || deploymentUrl || 'Deployment in progress...';
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🚀 **Netlify Preview Deployment Complete!**
+          
+          **Preview URL:** ${url}
+          
+          This deployment was triggered by commit: \`${{ github.sha }}\``
+          })
+

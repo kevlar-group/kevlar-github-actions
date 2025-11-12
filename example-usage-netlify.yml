@@ -1,0 +1,47 @@
+name: Build and Deploy (Multi-Platform)
+
+on:
+  push:
+    branches: [ main, master, dev ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+# Add permissions for security scanning
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: gc-frontend-web
+
+jobs:
+  # Netlify Deployment (for React.js, Next.js, NestJS applications)
+  deploy-netlify:
+    uses: kevlar-group/kevlar-github-actions/.github/workflows/netlify-deploy.yml@main
+    with:
+      project-type: 'nextjs'  # Options: react, nextjs, nestjs, static
+      netlify-site-id: 'your-site-id-here'
+      netlify-site-name: 'gc-frontend-web'  # Optional: your-site.netlify.app
+      node-version: '20'
+      build-command: 'npm run build'
+      publish-dir: '.next'  # For Next.js, use 'dist' for React, 'build' for Create React App
+      api-url: 'https://gc-api.kevlargroup.xyz'
+      production-branch: 'main'
+    secrets:
+      netlify-token: 'your-netlify-token-here'
+
+  # SonarQube analysis using reusable workflow
+  # sonarqube:
+  #   uses: kevlar-group/kevlar-github-actions/.github/workflows/sonarqube.yml@main
+  #   with:
+  #     java-version: '17'
+  #     project-type: 'nextjs'  # Options: java, react, nextjs, nestjs
+  #     sonar-project-key: 'gc-frontend-web'
+  #     sonar-project-name: 'gc-frontend-web'
+  #   secrets:
+  #     sonar-token: 'sqp_158d2985f2e0827cd42ea62b4635301b1d87859a'
+  #     sonar-host-url: 'http://162.0.224.146:9090'
+

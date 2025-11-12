@@ -317,14 +317,17 @@ jobs:
             exit 1
           fi
           
-          # Count files in directory (more reliable than ls -A check)
-          FILE_COUNT=$(find "$DEPLOY_PATH" -mindepth 1 -maxdepth 1 | wc -l)
-          
-          if [ "$FILE_COUNT" -gt 0 ]; then
-            echo "✅ Deployment verified! Found $FILE_COUNT items in $DEPLOY_PATH"
+          # Check if directory has any files (simple and reliable method)
+          if [ "$(ls -A "$DEPLOY_PATH" 2>/dev/null)" ]; then
+            echo "✅ Deployment verified! Files are present in $DEPLOY_PATH"
             echo ""
             echo "Deployed files:"
             ls -lah "$DEPLOY_PATH" | head -20
+            echo ""
+            
+            # Count files for info
+            FILE_COUNT=$(ls -1 "$DEPLOY_PATH" 2>/dev/null | wc -l | tr -d ' ')
+            echo "Total files/directories: $FILE_COUNT"
             echo ""
             
             # Check for index.html
@@ -345,7 +348,11 @@ jobs:
             fi
           else
             echo "❌ Deployment verification failed! Directory is empty."
-            echo "Directory exists but contains no files."
+            echo "Directory exists at: $DEPLOY_PATH"
+            echo "But contains no files."
+            echo ""
+            echo "Debugging info:"
+            ls -la "$DEPLOY_PATH" || echo "Cannot list directory contents"
             exit 1
           fi
         EOF

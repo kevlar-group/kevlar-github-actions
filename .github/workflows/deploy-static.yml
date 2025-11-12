@@ -1,0 +1,334 @@
+name: Deploy Static Job
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: 'Project name (used for deployment path)'
+        required: true
+        type: string
+      build-command:
+        description: 'Build command to run'
+        required: false
+        type: string
+        default: 'npm run build'
+      build-dir:
+        description: 'Build output directory (e.g., dist, build, out)'
+        required: false
+        type: string
+        default: 'dist'
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      api-url:
+        description: 'API URL for environment variable'
+        required: false
+        type: string
+        default: ''
+      enable-nginx:
+        description: 'Enable nginx configuration'
+        required: false
+        type: boolean
+        default: false
+      service-port:
+        description: 'Internal service port for nginx proxy_pass'
+        required: false
+        type: string
+      nginx-service-name:
+        description: 'Name for nginx config file (e.g., my-static-site)'
+        required: false
+        type: string
+      nginx-fqdn:
+        description: 'FQDN(s) for the service (comma-separated for multiple, e.g., site.kevlargroup.xyz www.site.kevlargroup.xyz)'
+        required: false
+        type: string
+      ssl-cert-path:
+        description: 'SSL certificate path'
+        required: false
+        type: string
+        default: '/etc/letsencrypt/live/kevlargroup.xyz/fullchain.pem'
+      ssl-cert-key-path:
+        description: 'SSL certificate key path'
+        required: false
+        type: string
+        default: '/etc/letsencrypt/live/kevlargroup.xyz/privkey.pem'
+    secrets:    
+      ssh-private-key:
+        description: 'SSH private key for server access'
+        required: true
+      server-host:
+        description: 'Server hostname or IP'
+        required: true
+      server-user:
+        description: 'Server username'
+        required: true
+        
+jobs:
+  deploy-static:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: ${{ inputs.build-command }}
+      env:
+        NEXT_PUBLIC_API_URL: ${{ inputs.api-url }}
+        REACT_APP_API_URL: ${{ inputs.api-url }}
+        VITE_API_URL: ${{ inputs.api-url }}
+        API_URL: ${{ inputs.api-url }}
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.ssh-private-key }}" | tr -d '\r' > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        eval "$(ssh-agent -s)"
+        ssh-add ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.server-host }} >> ~/.ssh/known_hosts
+
+    - name: Create deployment directory on server
+      run: |
+        DEPLOY_PATH="/opt/static/${{ inputs.project-name }}"
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} "mkdir -p $DEPLOY_PATH"
+        echo "✅ Created deployment directory: $DEPLOY_PATH"
+
+    - name: Copy static files to server
+      run: |
+        DEPLOY_PATH="/opt/static/${{ inputs.project-name }}"
+        BUILD_DIR="${{ inputs.build-dir }}"
+        
+        # Check if build directory exists
+        if [ ! -d "$BUILD_DIR" ]; then
+          echo "❌ Error: Build directory '$BUILD_DIR' not found!"
+          echo "Available directories:"
+          ls -la
+          exit 1
+        fi
+        
+        echo "Copying files from $BUILD_DIR to $DEPLOY_PATH..."
+        
+        # Copy files using rsync for efficiency
+        rsync -avz --delete \
+          -e "ssh -o StrictHostKeyChecking=no" \
+          "$BUILD_DIR/" \
+          ${{ secrets.server-user }}@${{ secrets.server-host }}:$DEPLOY_PATH/
+        
+        echo "✅ Static files copied successfully"
+
+    - name: Set proper permissions
+      run: |
+        DEPLOY_PATH="/opt/static/${{ inputs.project-name }}"
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << EOF
+          # Set ownership to server user
+          sudo chown -R ${{ secrets.server-user }}:${{ secrets.server-user }} $DEPLOY_PATH
+          
+          # Set permissions (readable by web server, writable by owner)
+          sudo chmod -R 755 $DEPLOY_PATH
+          
+          echo "✅ Set permissions on $DEPLOY_PATH"
+        EOF
+
+    - name: Configure Nginx
+      if: inputs.enable-nginx == true
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} 'bash -s' << 'REMOTE_SCRIPT'
+          # Get the current user
+          CURRENT_USER=$(whoami)
+          echo "Current user: $CURRENT_USER"
+          echo "Testing passwordless sudo configuration for user: $CURRENT_USER..."
+          
+          # Test passwordless sudo access first
+          if sudo -n true 2>/dev/null; then
+            echo "✅ Passwordless sudo verified (non-interactive) for user: $CURRENT_USER"
+          else
+            echo "⚠️ Warning: Passwordless sudo test failed (non-interactive) for user: $CURRENT_USER"
+            echo "Attempting interactive sudo test..."
+            if sudo true 2>/dev/null; then
+              echo "✅ Interactive sudo works, but non-interactive may need configuration"
+              echo "Please ensure sudoers allows non-interactive sessions for user: $CURRENT_USER"
+            else
+              echo "❌ Error: Sudo is not working at all for user: $CURRENT_USER"
+              echo ""
+              echo "Please configure passwordless sudo by running on the server:"
+              echo "  sudo visudo -f /etc/sudoers.d/$CURRENT_USER-passwordless"
+              echo "  Add this line: $CURRENT_USER ALL=(ALL) NOPASSWD: ALL"
+              echo "  Then save, verify with: sudo visudo -c"
+              echo "  Set permissions: sudo chmod 0440 /etc/sudoers.d/$CURRENT_USER-passwordless"
+              echo "  And test with: sudo -n true"
+              exit 1
+            fi
+          fi
+          
+          # Validate required inputs
+          if [ -z "${{ inputs.service-port }}" ] || [ -z "${{ inputs.nginx-service-name }}" ] || [ -z "${{ inputs.nginx-fqdn }}" ]; then
+            echo "❌ Error: service-port, nginx-service-name, and nginx-fqdn are required when enable-nginx is true"
+            exit 1
+          fi
+          
+          NGINX_SERVICE_NAME="${{ inputs.nginx-service-name }}"
+          SERVICE_PORT="${{ inputs.service-port }}"
+          NGINX_FQDN="${{ inputs.nginx-fqdn }}"
+          SSL_CERT="${{ inputs.ssl-cert-path }}"
+          SSL_KEY="${{ inputs.ssl-cert-key-path }}"
+          DEPLOY_PATH="/opt/static/${{ inputs.project-name }}"
+          
+          # Split FQDN by comma and create server_name line
+          SERVER_NAMES=$(echo "$NGINX_FQDN" | tr ',' ' ')
+          
+          # Create nginx config file
+          NGINX_CONFIG="/etc/nginx/sites-available/$NGINX_SERVICE_NAME"
+          
+          # Write nginx config using printf and sudo tee to avoid heredoc YAML issues
+          printf '%s\n' \
+            "# Static Site Server Block for $NGINX_SERVICE_NAME" \
+            "server {" \
+            "    listen 443 ssl;" \
+            "    server_name $SERVER_NAMES;" \
+            "" \
+            "    # SSL Certificate paths" \
+            "    ssl_certificate $SSL_CERT;" \
+            "    ssl_certificate_key $SSL_KEY;" \
+            "" \
+            "    # Optional SSL settings for better security" \
+            "    ssl_protocols TLSv1.2 TLSv1.3;" \
+            "    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';" \
+            "    ssl_prefer_server_ciphers on;" \
+            "    ssl_session_cache shared:SSL:10m;" \
+            "    ssl_session_timeout 1h;" \
+            "    ssl_session_tickets off;" \
+            "" \
+            "    # HSTS (HTTP Strict Transport Security) (optional)" \
+            "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" \
+            "" \
+            "    # Root directory for static files" \
+            "    root $DEPLOY_PATH;" \
+            "    index index.html index.htm;" \
+            "" \
+            "    # Serve static files" \
+            "    location / {" \
+            "        try_files \$uri \$uri/ /index.html;" \
+            "    }" \
+            "" \
+            "    # Cache static assets" \
+            "    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {" \
+            "        expires 1y;" \
+            "        add_header Cache-Control \"public, immutable\";" \
+            "    }" \
+            "}" \
+            "" \
+            "# Redirect HTTP to HTTPS" \
+            "server {" \
+            "    listen 80;" \
+            "    server_name $SERVER_NAMES;" \
+            "" \
+            "    location / {" \
+            "        return 301 https://\$host\$request_uri;" \
+            "    }" \
+            "}" | sudo tee "$NGINX_CONFIG" > /dev/null
+          
+          echo "✅ Created nginx config file: $NGINX_CONFIG"
+          
+          # Create symbolic link in sites-enabled
+          NGINX_ENABLED="/etc/nginx/sites-enabled/$NGINX_SERVICE_NAME"
+          
+          # Remove existing link if it exists
+          if [ -L "$NGINX_ENABLED" ]; then
+            sudo rm "$NGINX_ENABLED"
+            echo "ℹ️ Removed existing symbolic link"
+          fi
+          
+          # Create new symbolic link
+          sudo ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
+          echo "✅ Created symbolic link: $NGINX_ENABLED -> $NGINX_CONFIG"
+          
+          # Ensure SSL certificate directory and files are readable
+          CERT_DIR=$(dirname "$SSL_CERT")
+          if [ -d "$CERT_DIR" ]; then
+            sudo chmod 755 "$CERT_DIR" 2>/dev/null || true
+          fi
+          if [ -f "$SSL_CERT" ]; then
+            sudo chmod 644 "$SSL_CERT" 2>/dev/null || true
+          fi
+          if [ -f "$SSL_KEY" ]; then
+            sudo chmod 600 "$SSL_KEY" 2>/dev/null || true
+          fi
+          
+          # Ensure parent directories of Let's Encrypt are traversable
+          if [ -d "/etc/letsencrypt" ]; then
+            sudo chmod 755 /etc/letsencrypt 2>/dev/null || true
+          fi
+          if [ -d "/etc/letsencrypt/live" ]; then
+            sudo chmod 755 /etc/letsencrypt/live 2>/dev/null || true
+          fi
+          
+          # Ensure nginx log directory is accessible
+          if [ -d "/var/log/nginx" ]; then
+            sudo chmod 755 /var/log/nginx 2>/dev/null || true
+            sudo touch /var/log/nginx/error.log 2>/dev/null || true
+            sudo chmod 644 /var/log/nginx/error.log 2>/dev/null || true
+          fi
+          
+          # Test nginx configuration
+          echo "Testing nginx configuration..."
+          if sudo nginx -t 2>&1; then
+            echo "✅ Nginx configuration test passed"
+            
+            # Reload nginx
+            if sudo systemctl reload nginx; then
+              echo "✅ Nginx reloaded successfully"
+            else
+              echo "⚠️ Failed to reload nginx, attempting restart..."
+              sudo systemctl restart nginx
+              echo "✅ Nginx restarted"
+            fi
+          else
+            echo "❌ Nginx configuration test failed"
+            sudo nginx -t 2>&1
+            exit 1
+          fi
+        REMOTE_SCRIPT
+
+    - name: Verify deployment
+      run: |
+        DEPLOY_PATH="/opt/static/${{ inputs.project-name }}"
+        ssh -o StrictHostKeyChecking=no ${{ secrets.server-user }}@${{ secrets.server-host }} << EOF
+          echo "Verifying deployment at: $DEPLOY_PATH"
+          
+          # Check if deployment directory exists and has files
+          if [ -d "$DEPLOY_PATH" ] && [ "$(ls -A $DEPLOY_PATH)" ]; then
+            echo "✅ Deployment verified! Files are present in $DEPLOY_PATH"
+            echo ""
+            echo "Deployed files:"
+            ls -lah $DEPLOY_PATH | head -20
+            
+            # Check for index.html
+            if [ -f "$DEPLOY_PATH/index.html" ]; then
+              echo ""
+              echo "✅ index.html found - static site is ready!"
+            else
+              echo ""
+              echo "⚠️ Warning: index.html not found. Make sure your build outputs an index.html file."
+            fi
+          else
+            echo "❌ Deployment verification failed! Directory is empty or doesn't exist."
+            exit 1
+          fi
+        EOF
+

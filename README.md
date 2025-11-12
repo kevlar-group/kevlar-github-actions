@@ -98,7 +98,65 @@ jobs:
 - `server-user` (required): Server username
 - `dockerhub-username` (required): Docker Hub username
 
-### 4. Vercel Deploy Workflow (`vercel-deploy.yml`)
+### 4. Deploy Static Workflow (`deploy-static.yml`)
+Builds and deploys static sites to a server at `/opt/static/project-name/`.
+
+**Usage:**
+```yaml
+name: Deploy Static Site
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-static:
+    uses: your-org/kevlar-github-actions/.github/workflows/deploy-static.yml@main
+    with:
+      project-name: 'my-static-site'
+      build-command: 'npm run build'
+      build-dir: 'dist'
+      node-version: '20'
+      api-url: 'https://api.example.com'
+      enable-nginx: true
+      service-port: '80'
+      nginx-service-name: 'my-static-site'
+      nginx-fqdn: 'mysite.kevlargroup.xyz www.mysite.kevlargroup.xyz'
+    secrets:
+      ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      server-host: ${{ secrets.SERVER_HOST }}
+      server-user: ${{ secrets.SERVER_USER }}
+```
+
+**Inputs:**
+- `project-name` (required): Project name (used for deployment path: `/opt/static/project-name/`)
+- `build-command` (optional): Build command (default: 'npm run build')
+- `build-dir` (optional): Build output directory (default: 'dist')
+  - Next.js (static export): `out`
+  - React (Vite): `dist`
+  - Create React App: `build`
+  - Vue: `dist`
+- `node-version` (optional): Node.js version (default: '20')
+- `api-url` (optional): API URL for environment variable
+- `enable-nginx` (optional): Enable nginx configuration (default: false)
+- `service-port` (optional): Port for nginx (usually 80 for static sites)
+- `nginx-service-name` (optional): Name for nginx config file
+- `nginx-fqdn` (optional): FQDN(s) for the service (comma-separated)
+- `ssl-cert-path` (optional): SSL certificate path
+- `ssl-cert-key-path` (optional): SSL certificate key path
+
+**Secrets:**
+- `ssh-private-key` (required): SSH private key for server access
+- `server-host` (required): Server hostname or IP
+- `server-user` (required): Server username
+
+**Notes:**
+- Static files are deployed to `/opt/static/project-name/`
+- Uses `rsync` for efficient file transfer
+- Automatically handles SPA routing with `try_files` in nginx
+- Caches static assets (images, CSS, JS) for 1 year
+- Requires passwordless sudo for nginx configuration (if enabled)
+
+### 5. Vercel Deploy Workflow (`vercel-deploy.yml`)
 Deploys applications to Vercel platform.
 
 **Usage:**
@@ -144,7 +202,7 @@ Error: Git author <email> must have access to the team <team-name>'s projects on
 
 Alternatively, ensure the Vercel token owner has full team access and deployment permissions.
 
-### 5. Netlify Deploy Workflow (`netlify-deploy.yml`)
+### 6. Netlify Deploy Workflow (`netlify-deploy.yml`)
 Deploys applications to Netlify platform.
 
 **Usage:**
@@ -194,7 +252,7 @@ jobs:
   - Vue: `dist`
   - Static sites: root directory or `public`
 
-### 6. SonarQube Workflow (`sonarqube.yml`)
+### 7. SonarQube Workflow (`sonarqube.yml`)
 Runs SonarQube code quality analysis for multiple languages.
 
 **Usage:**
